@@ -13,10 +13,7 @@ Launch k3d with Traefik v2
 ## Start k3d "As Is“
 
 ```bash
-k3d create 
-```
-
-```bash
+$k3d create 
 INFO[0000] Created cluster network with ID dd812c947977dc2956da7fe23911444a9c3b9c2c135fe659cfe38ce2e0846709 
 INFO[0000] Created docker volume  k3d-k3s-default-images 
 INFO[0000] Creating cluster [k3s-default]               
@@ -32,14 +29,11 @@ kubectl cluster-info
 Then we have to set the KUBECONFIG environment variable to use the `kubectl`command and access the cluster
 
 ```bash
-export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
+$export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
 ```
 
 ```bash
-kubectl cluster-info
-```
-
-```bash
+$kubectl cluster-info
 Kubernetes master is running at https://localhost:6443
 CoreDNS is running at https://localhost:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 Metrics-server is running at https://localhost:6443/api/v1/namespaces/kube-system/services/https:metrics-server:/proxy
@@ -50,10 +44,7 @@ To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'
 Then, we can check the deployment use by default
 
 ```bash
-kubectl get all --all-namespaces
-```
-
-```bash
+$kubectl get all --all-namespaces
 NAMESPACE     NAME                                          READY   STATUS      RESTARTS   AGE
 kube-system   pod/local-path-provisioner-58fb86bdfd-tr5p2   1/1     Running     0          7m40s
 kube-system   pod/metrics-server-6d684c7b5-9698x            1/1     Running     0          7m40s
@@ -87,7 +78,7 @@ NAMESPACE     NAME                             COMPLETIONS   DURATION   AGE
 kube-system   job.batch/helm-install-traefik   1/1           41s        7m52s
 ```
 
-Tips: if you have a `watch` command installed, keep an eye on your cluster by using it.
+Tip: if you have a `watch` command installed, keep an eye on your cluster by using it.
 
 ```bash
 watch kubectl get all --all-namespace
@@ -129,4 +120,131 @@ To do that, we need to define a bunch of yaml configuration file (we will not us
 
 We will use a [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) to deploy a Traefik
 [Pod](https://kubernetes.io/docs/concepts/workloads/pods/pod/) and a LoadBalancer 
-[Service](https://kubernetes.io/fr/docs/concepts/services-networking/service/) to deploy Traefik.
+[Service](https://kubernetes.io/fr/docs/concepts/services-networking/service/) to access the Traefik pod as LoadBalancer.
+We will use a simple whoami image to check if our configuration is going well
+All configuration files are available in the [conf](conf/) directory.
+
+We can try to launch Traefik with only the api exposed (on 8008 HTTP port by default).
+We will use the Traefik API [insecure mode](https://docs.traefik.io/operations/api/#insecure) that is a perfect fit for the development but inappropriate for the production.
+We need to use a basic [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) to allow Traefik to have the minimal access to dialog with Kubernetes API.
+We just have to apply the followinf configuration via kubectl.
+
+```yaml
+# my_very_first_step.yml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: traefik-ingress-controller
+
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: traefik-ingress-controller
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-ingress-controller
+subjects:
+  - kind: ServiceAccount
+    name: traefik-ingress-controller
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik-ingress-controller
+
+---
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: traefik
+  labels:
+    app: traefik
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik-ingress-controller
+      containers:
+        - name: traefik
+          image: traefik:v2.2
+          imagePullPolicy: Always
+          args:
+            - --log.level=DEBUG
+            - --api.insecure
+          ports:
+            - name: api
+              containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+spec:
+  selector:
+    app: traefik
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      name: api
+  type: LoadBalancer
+```
+
+We need to launch the k3d with the HTTP port 8080 exposed and we will avoid the default Traefik deployment thanks to a server configuration option.
+
+```bash
+$ k3d create --publish 8080:8080 --server-arg '--no-deploy=traefik' 
+$ export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
+$ watch kubectl get all --all-namespaces
+```
+
+Wait for the cluster to be completely launched. Then apply the configuration:
+
+```bash
+$ kubectl apply -f conf/my_very_first_step.yml
+```
+
+As we didn't specify any namespace, the 'default' one will by used.
+Let's check the stack (focused on the default namespace).
+
+```bash
+$ kubectl get all
+NAME                      READY   STATUS    RESTARTS   AGE
+pod/svclb-traefik-rmxtq   1/1     Running   0          100s
+
+NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+service/kubernetes   ClusterIP      10.43.0.1       <none>        443/TCP          6m1s
+service/traefik      LoadBalancer   10.43.131.248   172.25.0.2    8080:30814/TCP   101s
+
+NAME                           DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+daemonset.apps/svclb-traefik   1         1         1       1            1           <none>          101s
+
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/traefik   0/1     0            0           101s
+
+NAME                                 DESIRED   CURRENT   READY   AGE
+replicaset.apps/traefik-7fd5d685d4   1         0         0       101s
+```

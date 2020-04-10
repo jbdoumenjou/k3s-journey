@@ -7,15 +7,15 @@ Working with kubernetes could be difficult and heavy for a developer (or a lambd
 [K3d](https://github.com/rancher/k3d) is an helper to launch k3s with docker.
 
 This repository contains several scenario, each directory is a step from beginner to advance usage of k3d & Traefik.
-
+The goal is not to provide production ready configuration, this guide is for helping user/developer to understand
+how Traefik works and how to test it easily with Kubernetes.
+ 
 ## First step
 
-In the *step1* directory presents the very first step in the k3d usage with Traefik.
-You will see how to start k3d and start your own Traefik. 
+The [step1](step1) directory presents the very first step in the k3d usage with Traefik.
+You will see how to start k3d and start our own Traefik. 
 
-# In a nutshell
-
-## Command Cheat Sheet
+# Command Cheat Sheet
 
 ```bash
 # launch the cluster, exports the wanted ports and avoid that the default traefik configuration to be deployed
@@ -29,6 +29,9 @@ k3 import-images containous/traefik:latest
 
 # check the stack
 kubectl get all --all-namespaces
+
+# apply the yaml configuration in the conf directory
+kubectl apply -f conf/
 
 # kill the cluster
 k3d delete
