@@ -9,7 +9,6 @@ Launch k3d with Traefik v2
 * Have the basics in docker and kubernetes
 * Installed k3d by following the [instructions](https://github.com/rancher/k3d#get) from the project page.
 
-
 ## Start k3d "As Is“
 
 ```bash
@@ -29,7 +28,7 @@ kubectl cluster-info
 Then we have to set the KUBECONFIG environment variable to use the `kubectl`command and access the cluster
 
 ```bash
-$export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
+export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
 ```
 
 ```bash
@@ -115,22 +114,16 @@ Thanks to the log, we can have the version of Traefik (1.7.14 in this case) and 
 {"level":"info","msg":"Server configuration reloaded on :8080","time":"2020-04-06T06:59:13Z"}
 ```
 
-As we want to manage our own Traefik, we will apply our configuration.
-To do that, we need to define a bunch of yaml configuration file (we will not use helm-chart here)
+## My very first Traefik deployment
 
-We will use a [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) to deploy a Traefik
-[Pod](https://kubernetes.io/docs/concepts/workloads/pods/pod/) and a LoadBalancer 
-[Service](https://kubernetes.io/fr/docs/concepts/services-networking/service/) to access the Traefik pod as LoadBalancer.
-We will use a simple whoami image to check if our configuration is going well
-All configuration files are available in the [conf](conf/) directory.
+As we want to manage our own Traefik, we will apply our own configuration (all the configuration is available in the [conf-0/](conf-0/) directory).
+To do that, we need to define a bunch of yaml configuration files (we will not use helm-chart here)
 
-We can try to launch Traefik with only the api exposed (on 8008 HTTP port by default).
-We will use the Traefik API [insecure mode](https://docs.traefik.io/operations/api/#insecure) that is a perfect fit for the development but inappropriate for the production.
-We need to use a basic [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) to allow Traefik to have the minimal access to dialog with Kubernetes API.
-We just have to apply the followinf configuration via kubectl.
+First, we need to use a basic [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) to allow Traefik
+to be used as a loadBalancer [Service](https://kubernetes.io/fr/docs/concepts/services-networking/service/).
 
 ```yaml
-# my_very_first_step.yml
+# RBAC
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -159,6 +152,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: traefik-ingress-controller
+    namespace: default
 
 ---
 apiVersion: v1
@@ -166,8 +160,13 @@ kind: ServiceAccount
 metadata:
   name: traefik-ingress-controller
 
----
+```
 
+Then we will use a [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) to deploy a Traefik
+[Pod](https://kubernetes.io/docs/concepts/workloads/pods/pod/) and apply the `traefik-ingress-controller` ServiceAccount.
+For this step, we will only activate the dashboard by using [insecure mode](https://docs.traefik.io/operations/api/#insecure) (inappropriate for the production)
+
+```yaml
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -213,25 +212,26 @@ spec:
   type: LoadBalancer
 ```
 
-We need to launch the k3d with the HTTP port 8080 exposed and we will avoid the default Traefik deployment thanks to a server configuration option.
+Let's test, we will launch the k3d with the HTTP port 8080 exposed.
+To avoid launching the default Traefik, we have to specify a k3s server option `--no-deploy=traefik`.
 
 ```bash
-$ k3d create --publish 8080:8080 --server-arg '--no-deploy=traefik' 
-$ export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
-$ watch kubectl get all --all-namespaces
+k3d create --publish 8080:8080 --server-arg '--no-deploy=traefik' 
+export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
+watch kubectl get all --all-namespaces
 ```
 
 Wait for the cluster to be completely launched. Then apply the configuration:
 
 ```bash
-$ kubectl apply -f conf/my_very_first_step.yml
+kubectl apply -f conf-0/
 ```
 
 As we didn't specify any namespace, the 'default' one will by used.
 Let's check the stack (focused on the default namespace).
 
 ```bash
-$ kubectl get all
+$kubectl get all
 NAME                      READY   STATUS    RESTARTS   AGE
 pod/svclb-traefik-rmxtq   1/1     Running   0          100s
 

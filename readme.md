@@ -30,7 +30,7 @@ k3 import-images containous/traefik:latest
 # check the stack
 kubectl get all --all-namespaces
 
-# apply the yaml configuration in the conf directory
+# apply the yaml configuration in the conf-1 directory
 kubectl apply -f conf/
 
 # kill the cluster
@@ -49,9 +49,10 @@ k3d delete
 * [kubectl Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
 * [kubectl Overview](https://kubernetes.io/docs/reference/kubectl/overview/)
 * [Helm Charts](https://helm.sh/)
-* Kubernetes Notions
-  * [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
-  * [Service](https://kubernetes.io/fr/docs/concepts/services-networking/service/)
+* Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+* Kubernetes [Service](https://kubernetes.io/fr/docs/concepts/services-networking/service/)
+* Kubernetes [Pod](https://kubernetes.io/docs/concepts/workloads/pods/pod/)
+* Kubernetes [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
 * [Traefik v2 k8s CRD](https://docs.traefik.io/v2.2/providers/kubernetes-crd/)
 * [Traefik v2 k8s CRD Routing](https://docs.traefik.io/v2.2/routing/providers/kubernetes-crd/)
 * [Traefik v2 k8s CRD Reference](https://docs.traefik.io/v2.2/reference/dynamic-configuration/kubernetes-crd/)
