@@ -22,9 +22,7 @@ spec:
     spec:
       containers:
         - name: containouswhoami
-          image: emilevauge/whoami
-          imagePullPolicy: Never
-#          image: containous/whoami
+          image: containous/whoami
           ports:
             - containerPort: 8080
 

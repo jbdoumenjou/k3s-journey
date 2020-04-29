@@ -24,9 +24,7 @@ spec:
       serviceAccountName: traefik-ingress-controller
       containers:
         - name: traefik
-          image: traefik-dev:fix-ingress-log
-#          image: traefik:v2.2
-          imagePullPolicy: Never
+          image: traefik:v2.2
           args:
             - --log.level=DEBUG
             - --api.insecure

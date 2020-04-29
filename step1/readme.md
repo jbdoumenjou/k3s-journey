@@ -119,7 +119,7 @@ Thanks to the log, we can have the version of Traefik (1.7.14 in this case) and 
 As we want to manage our own Traefik, we will apply our own configuration (all the configuration is available in the [conf-0/](conf-0/) directory).
 To do that, we need to define a bunch of yaml configuration files (we will not use helm-chart here)
 
-First, we need to use a basic [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) to allow Traefik
+First, we need to use a basic [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) to authorized Traefik
 to be used as a loadBalancer [Service](https://kubernetes.io/fr/docs/concepts/services-networking/service/).
 
 ```yaml
@@ -683,3 +683,32 @@ spec:
       port: 8080
 ````
  
+ Now we have a valid configuration, we can open a browser and check the [dashboard](http://localhost:8080/dashboard) 
+ 
+ TODO: add the screenshot
+ 
+ We see that we have a new [HTTP router](TODO: add link) that is build upon the ingressroute resource.
+ The configuration seems to be loaded, let's try to request our whoami:
+ 
+```bash
+$ curl mydomain
+TODO: add the result
+```
+
+Success !!
+The request enters the cluster, then it is routed by Traefik to a whoami pod.
+
+# What We Have Learn
+
+How to:
+* launch a simple kubernetes cluster thanks to k3d
+  * with the needed port opened
+  * without the default Traefik installation
+* declare, authorise actions, instanciate and check Traefik IngressRoute CRD
+* configure Traefik deployment with
+  * the API and dahsboard exposed (the insecured way)
+  * KubernetesCRD provider activated
+
+# What Next?
+
+HTTPS, redirection, TCP, UDP, and a whole world of possibilities.
