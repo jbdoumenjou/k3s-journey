@@ -84,7 +84,7 @@ watch kubectl get all --all-namespace
 ```
 
 By default, Traefik will be deployed as a default LoadBalancer service thanks to a [helm](https://github.com/containous/traefik-helm-chart) installation.
-[Helm Charts](https://helm.sh/) is a package manager for Kubernetes.
+[Helm Charts](https://helm.sh/) is a package manager for Kubernetes. You can find the last version of Traefik Helm Chart in the [official repository]() 
 
 To check the Traefik installation, we can check the Traefik pod logs
 
@@ -212,7 +212,7 @@ spec:
   type: LoadBalancer
 ```
 
-Let's test, we will launch the k3d with the HTTP port 8080 exposed.
+Let's test, we will launch the k3d with the 8080 HTTP port exposed.
 To avoid launching the default Traefik, we have to specify a k3s server option `--no-deploy=traefik`.
 
 ```bash
@@ -227,24 +227,459 @@ Wait for the cluster to be completely launched. Then apply the configuration:
 kubectl apply -f conf-0/
 ```
 
-As we didn't specify any namespace, the 'default' one will by used.
+As we didn't specify any namespace, the 'default' one will be used.
 Let's check the stack (focused on the default namespace).
 
 ```bash
 $kubectl get all
-NAME                      READY   STATUS    RESTARTS   AGE
-pod/svclb-traefik-rmxtq   1/1     Running   0          100s
+NAME                          READY   STATUS    RESTARTS   AGE
+pod/svclb-traefik-clw9v       1/1     Running   0          2m2s
+pod/traefik-6f7c5d67c-p2fkg   1/1     Running   0          2m3s
 
-NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
-service/kubernetes   ClusterIP      10.43.0.1       <none>        443/TCP          6m1s
-service/traefik      LoadBalancer   10.43.131.248   172.25.0.2    8080:30814/TCP   101s
+
+NAME                 TYPE           CLUSTER-IP   EXTERNAL-IP    PORT(S)          AGE
+service/kubernetes   ClusterIP      10.43.0.1    <none>         443/TCP          2m46s
+service/traefik      LoadBalancer   10.43.1.68   192.168.48.2   8080:30069/TCP   2m3s
 
 NAME                           DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-daemonset.apps/svclb-traefik   1         1         1       1            1           <none>          101s
+daemonset.apps/svclb-traefik   1         1         1       1            1           <none>          2m2s
 
 NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/traefik   0/1     0            0           101s
+deployment.apps/traefik   1/1     1            1           2m3s
 
-NAME                                 DESIRED   CURRENT   READY   AGE
-replicaset.apps/traefik-7fd5d685d4   1         0         0       101s
+NAME                                DESIRED   CURRENT   READY   AGE
+replicaset.apps/traefik-6f7c5d67c   1         1         1       2m3s
 ```
+
+We can open a browser and check the [dashboard](http://localhost:8080/dashboard)
+
+The cluster can be stopped
+
+```bash
+k3d d
+```
+
+## Who Am I ?
+
+Now that we know how to launch Traefik, let's try to route the traffic to our wonderful whoami!
+All the configuration is available under the [conf-1](./conf-1) directory.
+
+As we want to route the traffic to some instances of whoami, we will use a 
+[Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) as for Traefik instance deployment.
+The only notable difference is the replicas attributes that will be set to have several whoami instances:
+
+````yaml
+# whoami.yml
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: whoami
+  namespace: default
+  labels:
+    app: containous
+    name: whoami
+
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: containous
+      task: whoami
+  template:
+    metadata:
+      labels:
+        app: containous
+        task: whoami
+    spec:
+      containers:
+        - name: containouswhoami
+          image: containous/whoami
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami
+  namespace: default
+
+spec:
+  ports:
+    - protocol: TCP
+      port: 8080
+  selector:
+    app: containous
+    task: whoami
+````
+
+Traefik service need to be updated to define how to route the traffic to them.
+There are several ways to configure Traefik, in this example we will use the "CRD" one.
+Kubernetes provide a collection of resources (like services, pods, etc...) it could be extended thanks to Custom Resource Definitions ([CRD](TO COMPLETE)).
+The first thing is to declare this new definitions:
+
+```yaml
+# definitions.yml
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: ingressroutes.traefik.containo.us
+
+spec:
+  group: traefik.containo.us
+  version: v1alpha1
+  names:
+    kind: IngressRoute
+    plural: ingressroutes
+    singular: ingressroute
+  scope: Namespaced
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: middlewares.traefik.containo.us
+
+spec:
+  group: traefik.containo.us
+  version: v1alpha1
+  names:
+    kind: Middleware
+    plural: middlewares
+    singular: middleware
+  scope: Namespaced
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: ingressroutetcps.traefik.containo.us
+
+spec:
+  group: traefik.containo.us
+  version: v1alpha1
+  names:
+    kind: IngressRouteTCP
+    plural: ingressroutetcps
+    singular: ingressroutetcp
+  scope: Namespaced
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: ingressrouteudps.traefik.containo.us
+
+spec:
+  group: traefik.containo.us
+  version: v1alpha1
+  names:
+    kind: IngressRouteUDP
+    plural: ingressrouteudps
+    singular: ingressrouteudp
+  scope: Namespaced
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: tlsoptions.traefik.containo.us
+
+spec:
+  group: traefik.containo.us
+  version: v1alpha1
+  names:
+    kind: TLSOption
+    plural: tlsoptions
+    singular: tlsoption
+  scope: Namespaced
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: traefikservices.traefik.containo.us
+
+spec:
+  group: traefik.containo.us
+  version: v1alpha1
+  names:
+    kind: TraefikService
+    plural: traefikservices
+    singular: traefikservice
+  scope: Namespaced
+```
+
+Traefik will need all the definitions to check the configuration, 
+that's means that all the definitions must be declared in your cluster,
+ may they be used or not in your configuration. (TODO: rephrase)
+ 
+Now that the definitions are exposed, Traefik needs the authorization to use them, the RBAC must be updated accordingly.
+
+```yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: traefik-ingress-controller
+
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+# the following part allows Traefik to use the new resources
+  - apiGroups:
+      - traefik.containo.us
+    resources:
+      - middlewares
+      - ingressroutes
+      - traefikservices
+      - ingressroutetcps
+      - ingressrouteudps
+      - tlsoptions
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: traefik-ingress-controller
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-ingress-controller
+subjects:
+  - kind: ServiceAccount
+    name: traefik-ingress-controller
+```
+
+Declaring resources definition is one thing, having an instance of a resource is another thing.
+In our case, Traefik have to route HTTP requests to the whoami service, the [IngressRoute](TODO add lik to the doc) resource is the answer.
+Let's see the IngressRoute definition:
+
+```yaml
+# ingressroute.yml
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: myingressroute
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`mydomain`)
+      kind: Rule
+      services:
+        - name: whoami
+          port: 8080
+```
+
+We create an instance of `IngressRoute` resource with the apiVersion `traefik.containo.us/v1alpha1`.
+All the request with the `mydomain` Host will be routed to the `whoami` kubernetes service on the `8080` port.
+
+Last but not least, Traefik must be configured to listen to kubernetes and use the IngressRoute resource.
+So, Traefik needs to defined:
+ * the web HTTP entrypoint 
+ * the KubernetesCRD provider
+
+To allow request to access Traefik, the ports must be open:
+* in the Traefik deployment
+* in the ingress service
+* in the kubernetes cluster
+
+Let's see the Traefik configuration:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik-ingress-controller
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: traefik
+  labels:
+    app: traefik
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik-ingress-controller
+      containers:
+        - name: traefik
+          image: traefik:v2.2
+          args:
+            - --log.level=DEBUG
+            - --api.insecure
+            - --entrypoints.web.address=:80
+            - --providers.kubernetescrd
+          ports:
+            - name: web
+              containerPort: 80
+            - name: api
+              containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+spec:
+  selector:
+    app: traefik
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      name: api
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      name: web
+  type: LoadBalancer
+```
+
+Now that we have all the configuration, let's try it!
+First, we have to launch the cluster with the new port open
+
+```bash
+k3d create --publish 8080:8080 --publish 80:80 --server-arg '--no-deploy=traefik' 
+export KUBECONFIG="$(k3d get-kubeconfig --name='k3s-default')"
+watch kubectl get all --all-namespaces
+```
+
+Then, apply the configuration:
+
+```bash
+kubectl apply -f conf-1/
+```
+
+And see what's happens:
+
+TODO: update
+```bash
+NAMESPACE     NAME                                          READY   STATUS              RESTARTS   AGE
+default       pod/whoami-bf78b74c6-d5w5t                    0/1     ContainerCreating   0          3m2s
+default       pod/whoami-bf78b74c6-9x9lx                    0/1     ContainerCreating   0          3m2s
+default       pod/svclb-traefik-7pmwl                       0/2     ContainerCreating   0          3m2s
+default       pod/traefik-5c664675bf-cfdj8                  0/1     ContainerCreating   0          3m2s
+
+
+NAMESPACE     NAME                     TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                       AGE
+default       service/kubernetes       ClusterIP      10.43.0.1       <none>        443/TCP                       3m24s
+default       service/traefik          LoadBalancer   10.43.150.180   <pending>     8080:31508/TCP,80:31167/TCP   3m3s
+default       service/whoami           ClusterIP      10.43.46.130    <none>        8080/TCP                      3m2s
+
+NAMESPACE   NAME                           DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+default     daemonset.apps/svclb-traefik   1         1         0       1            0           <none>          3m2s
+
+NAMESPACE     NAME                                     READY   UP-TO-DATE   AVAILABLE   AGE
+default       deployment.apps/whoami                   0/2     2            0           3m2s
+default       deployment.apps/traefik                  0/1     1            0           3m3s
+```
+
+We have:
+ * 2 whoami pods thanks to the replicas attribute configuration.
+ * a kubernetes service to expose whoami pods
+ * a kubernetes service to expose traefik pod
+ * the deployments for Traefik and whoami pods
+ 
+ In this view, we can't see the ingressroute configuration, but we can check it as it is a valid kubernetes resource:
+```bash
+$ kubectl get ingressroute
+NAME             AGE
+myingressroute   67s
+```
+
+We can see that we have one ingressroute named `myingressroute`.
+Let's try to have more information:
+```bash
+$ kubectl describe ingressroute/myingressroute
+Name:         myingressroute
+Namespace:    default
+Labels:       <none>
+Annotations:  kubectl.kubernetes.io/last-applied-configuration:
+                {"apiVersion":"traefik.containo.us/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"myingressroute","namespace":"defau...
+API Version:  traefik.containo.us/v1alpha1
+Kind:         IngressRoute
+Metadata:
+  Creation Timestamp:  2020-04-29T10:20:05Z
+  Generation:          1
+  Resource Version:    636
+  Self Link:           /apis/traefik.containo.us/v1alpha1/namespaces/default/ingressroutes/myingressroute
+  UID:                 64d53435-5b73-4bb6-b218-a97a4f5a4e9c
+Spec:
+  Entry Points:
+    web
+  Routes:
+    Kind:   Rule
+    Match:  Host(`mydomain`)
+    Services:
+      Name:  whoami
+      Port:  8080
+Events:      <none>
+```
+
+We can have some useful information like the last applied configuration, the metadata associated to the resource and its definition.
+Another way to have information is to use the following command:
+
+````bash
+$ kubectl get ingressroute/myingressroute -o yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"traefik.containo.us/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"myingressroute","namespace":"default"},"spec":{"entryPoints":["web"],"routes":[{"kind":"Rule","match":"Host(`mydomain`)","services":[{"name":"whoami","port":8080}]}]}}
+  creationTimestamp: "2020-04-29T10:20:05Z"
+  generation: 1
+  name: myingressroute
+  namespace: default
+  resourceVersion: "636"
+  selfLink: /apis/traefik.containo.us/v1alpha1/namespaces/default/ingressroutes/myingressroute
+  uid: 64d53435-5b73-4bb6-b218-a97a4f5a4e9c
+spec:
+  entryPoints:
+  - web
+  routes:
+  - kind: Rule
+    match: Host(`mydomain`)
+    services:
+    - name: whoami
+      port: 8080
+````
+ 
